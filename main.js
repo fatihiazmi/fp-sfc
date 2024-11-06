@@ -296,7 +296,7 @@ function updateAI() {
       player2.anims.play(player2.x < defaultX ? "right" : "left", true);
     } else {
       player2.setVelocityX(0);
-      player2.anims.play("turn");
+      player2.anims.play("left");
     }
   }
 
