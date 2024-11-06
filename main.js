@@ -21,6 +21,7 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+const GAME_DURATION = 30; // seconds
 
 function preload() {
   this.load.image("sky", "images/sky.png");
@@ -44,6 +45,11 @@ let player2;
 let bombs;
 let score = { player1: 0, player2: 0 };
 let scoreText;
+let timerText;
+let timeLeft;
+let gameTimer;
+let isGameActive = true;
+let restartButton;
 
 function create() {
   this.add.image(400, 300, "sky");
@@ -52,22 +58,20 @@ function create() {
   goalP1 = this.physics.add.staticGroup();
   goalP2 = this.physics.add.staticGroup();
 
-  // Adjusted ball physics for lighter feel
   ball = this.physics.add
     .sprite(380, 200, "ball")
     .setScale(0.5)
     .setBounce(0.6)
-    .setDrag(20, 20) // Reduced air resistance (was 50)
-    .setAngularDrag(10) // Reduced rotational resistance (was 20)
-    .setMaxVelocity(500, 500); // Increased max velocity for smoother movement
+    .setDrag(20, 20)
+    .setAngularDrag(10)
+    .setMaxVelocity(500, 500);
 
-  ball.body.mass = 0.3; // Made ball lighter (was 0.5)
-  ball.setFriction(0.2); // Reduced base friction (was 0.5)
+  ball.body.mass = 0.3;
+  ball.setFriction(0.2);
 
   const ground = platforms.create(400, 568, "ground").setScale(2).refreshBody();
 
-  // Reduced ground friction
-  ground.friction = 0.3; // Was 0.8
+  ground.friction = 0.3;
 
   goalP1.create(30, 491, "goalP1").setScale(0.3).refreshBody();
   goalP2.create(770, 491, "goalP2").setScale(0.3).refreshBody();
@@ -84,6 +88,7 @@ function create() {
     .setCollideWorldBounds(true)
     .setDrag(1000, 0);
 
+  // Animations
   this.anims.create({
     key: "left",
     frames: this.anims.generateFrameNumbers("dude", { start: 0, end: 3 }),
@@ -104,6 +109,7 @@ function create() {
     repeat: -1,
   });
 
+  // Colliders
   this.physics.add.collider(player1, platforms);
   this.physics.add.collider(player2, platforms);
   this.physics.add.collider(ball, platforms, handleBallPlatformCollision);
@@ -125,19 +131,108 @@ function create() {
     this
   );
 
+  // Score and Timer Text
   scoreText = this.add.text(16, 16, updateScoreText(), {
     fontSize: "32px",
+    fill: "#000",
+  });
+
+  timerText = this.add.text(600, 16, formatTime(GAME_DURATION), {
+    fontSize: "32px",
+    fill: "#000",
+  });
+
+  // Create Restart Button (hidden initially)
+  restartButton = this.add
+    .text(250, 300, "Restart Game", {
+      fontSize: "32px",
+      fill: "#fff",
+      backgroundColor: "#000",
+      padding: { x: 20, y: 10 },
+    })
+    .setInteractive()
+    .on("pointerdown", () => restartGame.call(this))
+    .setVisible(false);
+
+  // Initialize timer
+  startGame.call(this);
+}
+
+function startGame() {
+  isGameActive = true;
+  timeLeft = GAME_DURATION;
+  score.player1 = 0;
+  score.player2 = 0;
+  scoreText.setText(updateScoreText());
+  restartButton.setVisible(false);
+
+  // Clear existing timer if it exists
+  if (gameTimer) {
+    gameTimer.destroy();
+  }
+
+  // Create new timer
+  gameTimer = this.time.addEvent({
+    delay: 1000,
+    callback: updateTimer,
+    callbackScope: this,
+    loop: true,
+  });
+
+  // Reset positions
+  resetPositions();
+}
+
+function resetPositions() {
+  ball.setPosition(400, 200);
+  ball.setVelocity(0, 0);
+  ball.setAngularVelocity(0);
+  player1.setPosition(100, 450);
+  player2.setPosition(700, 450);
+}
+
+function restartGame() {
+  startGame.call(this);
+}
+
+function updateTimer() {
+  if (!isGameActive) return;
+
+  timeLeft--;
+  timerText.setText(formatTime(timeLeft));
+
+  if (timeLeft <= 0) {
+    endGame.call(this);
+  }
+}
+
+function formatTime(seconds) {
+  return `Time: ${seconds}s`;
+}
+
+function endGame() {
+  isGameActive = false;
+  gameTimer.destroy();
+  restartButton.setVisible(true);
+
+  // Show winner
+  const winnerText =
+    score.player1 > score.player2
+      ? "Player 1 Wins!"
+      : score.player2 > score.player1
+      ? "Player 2 Wins!"
+      : "It's a Draw!";
+
+  this.add.text(220, 200, winnerText, {
+    fontSize: "48px",
     fill: "#000",
   });
 }
 
 function handleBallPlatformCollision(ball, platform) {
-  // Reduced friction effect
   const friction = platform.friction || 0.3;
   const currentVelocity = ball.body.velocity.x;
-  ball.body.setVelocityX(currentVelocity * (1 - friction * 0.5)); // Reduced friction impact
-
-  // Smaller bounce variation
+  ball.body.setVelocityX(currentVelocity * (1 - friction * 0.5));
   ball.body.setVelocityY(ball.body.velocity.y * (0.98 + Math.random() * 0.04));
 }
 
@@ -146,58 +241,112 @@ function handleBallPlayerCollision(ball, player) {
     player.body.velocity.x - ball.body.velocity.x
   );
   const kickStrength = Math.min(relativeVelocity + 150, 400);
-
   const kickDirection = player.x < ball.x ? 1 : -1;
 
   ball.body.setVelocityX(kickStrength * kickDirection);
-  ball.body.setVelocityY(-100 - Math.random() * 50); // Reduced upward force
-
-  // Reduced spin effect
-  ball.body.setAngularVelocity(kickStrength * kickDirection * 0.5); // Added 0.5 multiplier to reduce spin
+  ball.body.setVelocityY(-100 - Math.random() * 50);
+  ball.body.setAngularVelocity(kickStrength * kickDirection * 0.5);
 }
 
 function handleGoal(scorer) {
+  if (!isGameActive) return;
+
   score[scorer]++;
   scoreText.setText(updateScoreText());
-
-  ball.setPosition(400, 200);
-  ball.setVelocity(0, 0);
-  ball.setAngularVelocity(0);
+  resetPositions();
 }
 
 function updateScoreText() {
   return `Player 1: ${score.player1} - Player 2: ${score.player2}`;
 }
 
+function updateAI() {
+  if (!isGameActive) {
+    player2.setVelocityX(0);
+    player2.anims.play("turn");
+    return;
+  }
+
+  // Basic AI behavior
+  const distanceToBall = Math.abs(player2.x - ball.x);
+  const ballIsOnAISide = ball.x > 400;
+  const aiSpeed = 160;
+
+  // AI Movement logic
+  if (ballIsOnAISide) {
+    // When ball is on AI's side
+    if (distanceToBall > 50) {
+      // Move towards ball
+      if (player2.x > ball.x) {
+        player2.setVelocityX(-aiSpeed);
+        player2.anims.play("left", true);
+      } else {
+        player2.setVelocityX(aiSpeed);
+        player2.anims.play("right", true);
+      }
+    } else {
+      // Close to ball, try to kick it
+      player2.setVelocityX(ball.x > player2.x ? aiSpeed : -aiSpeed);
+    }
+  } else {
+    // When ball is on player's side, return to defensive position
+    const defaultX = 600;
+    if (Math.abs(player2.x - defaultX) > 50) {
+      player2.setVelocityX(player2.x < defaultX ? aiSpeed : -aiSpeed);
+      player2.anims.play(player2.x < defaultX ? "right" : "left", true);
+    } else {
+      player2.setVelocityX(0);
+      player2.anims.play("turn");
+    }
+  }
+
+  // Simple jump logic
+  if (
+    player2.body.touching.down &&
+    ball.y < player2.y - 50 &&
+    distanceToBall < 100
+  ) {
+    player2.setVelocityY(-330);
+  }
+}
+
 function update() {
   const cursors = this.input.keyboard.createCursorKeys();
 
-  if (cursors.left.isDown) {
-    player1.setVelocityX(-160);
-    player1.anims.play("left", true);
-  } else if (cursors.right.isDown) {
-    player1.setVelocityX(160);
-    player1.anims.play("right", true);
+  // Player 1 controls (only if game is active)
+  if (isGameActive) {
+    if (cursors.left.isDown) {
+      player1.setVelocityX(-160);
+      player1.anims.play("left", true);
+    } else if (cursors.right.isDown) {
+      player1.setVelocityX(160);
+      player1.anims.play("right", true);
+    } else {
+      player1.setVelocityX(0);
+      player1.anims.play("turn");
+    }
+
+    if (cursors.up.isDown && player1.body.touching.down) {
+      player1.setVelocityY(-330);
+    }
   } else {
+    // Stop player movement when game is over
     player1.setVelocityX(0);
     player1.anims.play("turn");
   }
 
-  if (cursors.up.isDown && player1.body.touching.down) {
-    player1.setVelocityY(-330);
-  }
+  // Update AI
+  updateAI();
 
-  // Check ball's movement and rotation
+  // Ball physics
   if (ball.body.touching.down) {
     const rollFriction = 0.99;
     ball.body.setVelocityX(ball.body.velocity.x * rollFriction);
 
-    // Stop rotation if the ball is moving very slowly
     const speed = Math.abs(ball.body.velocity.x);
     if (speed < 5) {
-      // If speed is less than 5 pixels per frame
-      ball.body.setVelocityX(0); // Stop completely
-      ball.body.setAngularVelocity(0); // Stop rotation
+      ball.body.setVelocityX(0);
+      ball.body.setAngularVelocity(0);
     }
   }
 }
